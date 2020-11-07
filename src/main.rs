@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use bevy::render::pass::ClearColor;
 use std::time::Duration;
+use rand::{thread_rng, Rng};
 
 const ARENA_WIDTH: i32 = 32;
 const ARENA_HEIGHT: i32 = 32;
@@ -32,8 +33,12 @@ fn setup(mut commands: Commands) {
 }
 
 fn game_setup(mut commands: Commands, mut materials: ResMut<Assets<ColorMaterial>>) {
-    let xs = [0,5,10,15];
-    for i in 0..AGENT_COUNT {
+    let mut rng = thread_rng();
+    //let xs = [0,5,10,15];
+    for _ in 0..AGENT_COUNT {
+        let nx = rng.gen_range(0, ARENA_HEIGHT);
+        let ny = rng.gen_range(0, ARENA_WIDTH);
+        //println!("{} {}",nx,ny);
         commands
             .spawn(SpriteComponents {
                 material: materials.add(Color::rgb(0.7, 0.7, 0.7).into()),
@@ -42,8 +47,8 @@ fn game_setup(mut commands: Commands, mut materials: ResMut<Assets<ColorMaterial
             })
             .with(Agent)
             .with(Position{
-                x: xs[i as usize],
-                y: xs[i as usize]})
+                x: nx,
+                y: ny})
             .with(Size::square(0.9));
     }
 }
@@ -91,7 +96,7 @@ fn rnd_agent(timer: ResMut<AgentMoveTimer>, mut events: ResMut<Events<MoveEvent>
     }
  
     for (e, pos) in rndagents.iter() {
-        let v: i32 = rand::random::<i32>() % 4;
+        let v: i32 = rand::random::<u8>() as i32 % 4;
         let mut new_ev = MoveEvent{sender:e, to: pos.clone()};
         if v == 0 {
             new_ev.to.x+=1;
