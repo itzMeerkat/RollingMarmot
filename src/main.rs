@@ -5,7 +5,7 @@ use rand::{thread_rng, Rng};
 
 const ARENA_WIDTH: i32 = 32;
 const ARENA_HEIGHT: i32 = 32;
-const AGENT_COUNT: u32 = 4;
+const AGENT_COUNT: u32 = 20;
 #[derive(Default, Copy, Clone, Debug, Eq, PartialEq, Hash)]
 struct Position {
     x: i32,
@@ -25,14 +25,51 @@ impl Size {
     }
 }
 
+struct MapState {
+    tiles: Vec<i32>
+}
+
+//0-> Empty
+//1-> Taken
+impl MapState {
+    fn new() -> MapState {
+        MapState{
+            tiles: vec![0;(ARENA_HEIGHT*ARENA_WIDTH)as usize]
+        }
+    }
+
+    //action=0: move out
+    //action=1: move in
+    fn apply(&mut self, index: usize, action: i32) -> i32 {
+        let mut success = 0;
+        if self.tiles[index] == 0 {
+            if action == 1 {
+                self.tiles[index] = 1;
+            } else if action == 0 {
+                success = 1;
+            }
+        } else if self.tiles[index] == 1 {
+            if action == 0 {
+                self.tiles[index] = 0;
+            } else if action == 1 {
+                success = 2;
+            }
+        }
+        success
+    }
+}
+
 struct Agent;
 
 fn setup(mut commands: Commands) {
     commands.spawn(Camera2dComponents::default());
-
 }
 
-fn game_setup(mut commands: Commands, mut materials: ResMut<Assets<ColorMaterial>>) {
+fn xy_to_idx(x:i32,y:i32) -> usize {
+    (x*ARENA_WIDTH + y) as usize
+}
+
+fn game_setup(mut commands: Commands, mut materials: ResMut<Assets<ColorMaterial>>, mut map_state: ResMut<MapState>) {
     let mut rng = thread_rng();
     //let xs = [0,5,10,15];
     for _ in 0..AGENT_COUNT {
@@ -50,6 +87,9 @@ fn game_setup(mut commands: Commands, mut materials: ResMut<Assets<ColorMaterial
                 x: nx,
                 y: ny})
             .with(Size::square(0.9));
+        if map_state.apply(xy_to_idx(nx, ny), 1)!=0 {
+            println!("Error on creation. {} {}",nx,ny);
+        }
     }
 }
 
@@ -114,14 +154,35 @@ fn rnd_agent(timer: ResMut<AgentMoveTimer>, mut events: ResMut<Events<MoveEvent>
     }
 }
 
-fn move_handler(events: ResMut<Events<MoveEvent>>, mut reader: Local<EventReader<MoveEvent>>, mut agents: Query<(Entity, &mut Position)>) {
+fn check_dfa_error(code: i32) {
+    if code == 0{
+        return;
+    } else if code == 1 {
+        println!("Moving out from empty tile");
+    } else if code == 2 {
+        println!("Moving in conflict");
+    }
+}
+
+fn move_handler(events: ResMut<Events<MoveEvent>>,
+    mut reader: Local<EventReader<MoveEvent>>,
+    mut map_state: ResMut<MapState>,
+    mut agents: Query<(Entity, &mut Position)>) {
     for e in reader.iter(&events) {
         if let Ok((_,mut c))=agents.get_mut(e.sender) {
             if e.to.x <0 || e.to.x >= ARENA_HEIGHT || e.to.y<0 || e.to.y>= ARENA_WIDTH {
                 println!("Move action denied");
             } else {
-                c.x = e.to.x;
-                c.y = e.to.y;
+                let mv_in = map_state.apply(xy_to_idx(e.to.x, e.to.y), 1);
+                if mv_in == 0 {
+                    let mv_out = map_state.apply(xy_to_idx(c.x, c.y), 0);
+                    if mv_out == 0 {
+                        c.x = e.to.x;
+                        c.y = e.to.y;
+                    }
+                    check_dfa_error(mv_out);
+                }
+                check_dfa_error(mv_in);
             }
         }
     }
@@ -136,7 +197,8 @@ fn main() {
             height: 800,
             ..Default::default()
         })
-        .add_resource(AgentMoveTimer(Timer::new(Duration::from_millis(500. as u64), true)))
+        .add_resource(AgentMoveTimer(Timer::new(Duration::from_millis(200. as u64), true)))
+        .add_resource(MapState::new())
         .add_startup_system(setup.system())
         .add_startup_stage("game_setup")
         .add_startup_system_to_stage("game_setup", game_setup.system())
